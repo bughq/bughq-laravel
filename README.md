@@ -17,6 +17,8 @@ Out of the box:
 
 ## Install
 
+Requires PHP 8.4+ and Laravel 11 or 12.
+
 ```bash
 composer require bughq/bughq-laravel
 ```

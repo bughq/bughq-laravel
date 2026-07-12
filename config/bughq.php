@@ -16,7 +16,10 @@ return [
     'dsn' => env('BUGHQ_DSN'),
     'project' => env('BUGHQ_PROJECT'),
     'key' => env('BUGHQ_KEY'),
-    'host' => env('BUGHQ_HOST', 'https://bughq.org'),
+    // No default here: a default would override the host embedded in a DSN
+    // (explicit options win over DSN parts). Unset, the SDK's own default
+    // (https://bughq.org) applies when neither this nor a DSN provides one.
+    'host' => env('BUGHQ_HOST'),
 
     /*
     |--------------------------------------------------------------------------

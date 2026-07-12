@@ -51,10 +51,25 @@ class BugHQServiceProvider extends ServiceProvider
             __DIR__ . '/../config/bughq.php' => $this->app->configPath('bughq.php'),
         ], 'bughq-config');
 
+        // The `bughq` log channel driver is registered UNCONDITIONALLY - a
+        // logging config referencing it must keep resolving when bughq is
+        // disabled (the disabled Client just drops everything), otherwise
+        // Laravel substitutes the emergency logger for the whole channel.
+        $this->app->make('log')->extend('bughq', function ($app, array $channelConfig) {
+            $handler = new LogHandler($app->make(Client::class), $channelConfig['level'] ?? 'error');
+
+            return new \Monolog\Logger('bughq', [$handler]);
+        });
+
         $config = $this->app['config']['bughq'] ?? [];
         if (!($config['enabled'] ?? true)) {
             return;
         }
+
+        // Long-running hosts reuse one Client - reset per unit of work so
+        // user identity, contexts, and breadcrumbs never leak across
+        // jobs/requests (queue workers, Octane).
+        $this->resetPerUnitOfWork();
 
         if ($config['capture']['exceptions'] ?? true) {
             $this->captureReportedExceptions();
@@ -71,13 +86,16 @@ class BugHQServiceProvider extends ServiceProvider
         if ($config['breadcrumbs']['logs'] ?? true) {
             $this->recordLogBreadcrumbs();
         }
+    }
 
-        // `bughq` log channel: `'channels' => ['bughq' => ['driver' => 'bughq']]`.
-        $this->app->make('log')->extend('bughq', function ($app, array $channelConfig) {
-            $handler = new LogHandler($app->make(Client::class), $channelConfig['level'] ?? 'error');
+    private function resetPerUnitOfWork(): void
+    {
+        $reset = fn () => $this->app->make(Client::class)->reset();
 
-            return new \Monolog\Logger('bughq', [$handler]);
-        });
+        // Queue workers: fresh scope/breadcrumbs for every job.
+        Event::listen('Illuminate\Queue\Events\JobProcessing', $reset);
+        // Octane: fresh scope/breadcrumbs for every request the worker serves.
+        Event::listen('Laravel\Octane\Events\RequestReceived', $reset);
     }
 
     /**
@@ -101,6 +119,13 @@ class BugHQServiceProvider extends ServiceProvider
         });
     }
 
+    /**
+     * Enrich failed-job reports. The failure exception ALSO flows through the
+     * exception handler's report pipeline (the worker rethrows and reports it),
+     * which is where it gets captured - capturing here too would report every
+     * failed job twice. This listener only attaches the job context + a
+     * breadcrumb so that single capture arrives fully annotated.
+     */
     private function captureQueueFailures(): void
     {
         Event::listen(JobFailed::class, function (JobFailed $event): void {
@@ -111,7 +136,13 @@ class BugHQServiceProvider extends ServiceProvider
                 'queue' => $event->job->getQueue(),
                 'attempts' => $event->job->attempts(),
             ]);
-            $client->captureException($event->exception, ['queueFailure' => true]);
+            $client->setTag('queue_failure', 'true');
+            $client->addBreadcrumb(new Breadcrumb(
+                message: $event->job->resolveName() . ' failed',
+                type: 'error',
+                category: 'queue.failed',
+                level: 'error',
+            ));
         });
     }
 
@@ -152,7 +183,11 @@ class BugHQServiceProvider extends ServiceProvider
     private function attachRequestContext(Client $client): void
     {
         try {
-            if (!$this->app->bound('request') || $this->app->runningInConsole()) {
+            // Octane workers run with a CLI SAPI, so runningInConsole() is
+            // true there even though a real HTTP request is bound - only
+            // treat plain artisan/queue processes as console.
+            $isOctane = isset($_SERVER['LARAVEL_OCTANE']);
+            if (!$this->app->bound('request') || ($this->app->runningInConsole() && !$isOctane)) {
                 return;
             }
             $request = $this->app->make('request');
@@ -181,6 +216,10 @@ class BugHQServiceProvider extends ServiceProvider
             $guard = $this->app->make('auth')->guard();
             $user = $guard->check() ? $guard->user() : null;
             if ($user === null) {
+                // Explicitly clear - in a long-lived worker the previous
+                // request's user must never be attached to this event.
+                $client->setUser(null);
+
                 return;
             }
 
