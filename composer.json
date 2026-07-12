@@ -1,0 +1,56 @@
+{
+    "name": "bughq/bughq-laravel",
+    "description": "bughq error tracking - Laravel integration",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://bughq.org",
+    "keywords": ["bughq", "error-tracking", "error-monitoring", "laravel"],
+    "support": {
+        "issues": "https://github.com/bughq/bughq-laravel/issues",
+        "source": "https://github.com/bughq/bughq-laravel"
+    },
+    "require": {
+        "php": ">=8.1",
+        "bughq/bughq": "^0.1",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0",
+        "monolog/monolog": "^3.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0",
+        "phpunit/phpunit": "^10.5 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "BugHQ\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BugHQ\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "BugHQ\\Laravel\\BugHQServiceProvider"
+            ],
+            "aliases": {
+                "BugHQ": "BugHQ\\Laravel\\Facades\\BugHQ"
+            }
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/bughq/bughq-php"
+        }
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
