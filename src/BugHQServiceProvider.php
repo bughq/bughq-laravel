@@ -27,7 +27,7 @@ class BugHQServiceProvider extends ServiceProvider
         $this->app->singleton(Client::class, function ($app): Client {
             $config = $app['config']['bughq'] ?? [];
 
-            return new Client(array_filter([
+            $client = new Client(array_filter([
                 'dsn' => $config['dsn'] ?? null,
                 'project' => $config['project'] ?? null,
                 'key' => $config['key'] ?? null,
@@ -40,6 +40,11 @@ class BugHQServiceProvider extends ServiceProvider
                 'framework' => 'laravel',
                 'sdkName' => 'bughq.laravel',
             ], static fn ($v) => $v !== null));
+
+            // Share the container's client with the SDK's plain static API so
+            // \BugHQ\BugHQ::report() works in Laravel too, instead of silently
+            // returning false (the static class is never init()ed here).
+            return \BugHQ\BugHQ::useClient($client);
         });
 
         $this->app->alias(Client::class, 'bughq');
