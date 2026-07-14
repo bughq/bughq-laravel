@@ -47,12 +47,6 @@
     "scripts": {
         "test": "phpunit"
     },
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/bughq/bughq-php"
-        }
-    ],
     "config": {
         "sort-packages": true
     },
